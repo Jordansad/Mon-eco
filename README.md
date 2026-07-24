@@ -57,32 +57,18 @@ Sur iOS (Safari) : ouvrir l'URL, bouton Partager → "Sur l'écran d'accueil". L
 - **Épargne** : objectifs d'épargne (créer, alimenter, retirer, supprimer), suivi de progression.
 - **Réglages** : devise (FCFA / € / $ / symbole personnalisé), décimales, position du symbole, réinitialisation complète des données.
 
-## Déploiement (à valider avant toute mise en ligne)
+## Déploiement
 
-### Option 1 — Netlify ou Vercel (zéro config)
+### GitHub Pages (déjà configuré, actif dans ce dépôt)
 
-1. Pousser le dépôt sur GitHub.
-2. Sur [Netlify](https://app.netlify.com) ou [Vercel](https://vercel.com) : "New site/project from Git", sélectionner le dépôt.
-3. Build command : `npm run build` — Publish/Output directory : `dist`.
-4. Le site est servi en HTTPS automatiquement (requis pour le service worker) — aucune config PWA supplémentaire nécessaire tant que `base: '/'` reste inchangé dans `vite.config.js`.
+Le dépôt est prêt pour GitHub Pages : `base`, `start_url` et `scope` sont réglés sur `/Mon-eco/` dans `vite.config.js`, et `.github/workflows/deploy.yml` build + déploie automatiquement sur `https://jordansad.github.io/Mon-eco/` à chaque push sur `main`.
 
-### Option 2 — GitHub Pages
+**Étape unique à faire une fois, côté GitHub** (aucun outil ne me permet de le faire à ta place) : dans le dépôt → **Settings → Pages → Build and deployment → Source : "GitHub Actions"**. Une fois ce réglage activé, chaque push sur `main` republie automatiquement le site — rien d'autre à faire ensuite.
 
-GitHub Pages sert le site depuis `https://<utilisateur>.github.io/<nom-du-dépôt>/`, donc l'app n'est pas à la racine du domaine : il faut adapter `base` dans `vite.config.js` :
+Si tu renommes le dépôt ou changes de propriétaire, mets à jour `BASE_PATH` dans `vite.config.js` (et la doc ci-dessus) en conséquence.
 
-```js
-export default defineConfig({
-  base: '/<nom-du-dépôt>/', // ex : '/mon-eco/'
-  // ...
-});
-```
+### Alternative — Netlify ou Vercel (zéro config)
 
-Et mettre à jour `start_url` et `scope` dans le manifest (`vite.config.js`, bloc `VitePWA({ manifest: { ... } })`) sur `'/<nom-du-dépôt>/'` pour que l'installation PWA fonctionne correctement en sous-chemin.
-
-Puis :
-
-```bash
-npm run build
-```
-
-Déployer le contenu de `dist/` sur la branche `gh-pages` (via l'action GitHub `actions/deploy-pages` ou un outil comme `gh-pages` en devDependency).
+1. Sur [Netlify](https://app.netlify.com) ou [Vercel](https://vercel.com) : "New site/project from Git", sélectionner le dépôt.
+2. Build command : `npm run build` — Publish/Output directory : `dist`.
+3. Ces plateformes servent l'app à la racine du domaine : remettre `BASE_PATH` à `'/'` dans `vite.config.js` avant de déployer dessus (sinon les assets pointeront vers `/Mon-eco/...` qui n'existe pas sur ce domaine).

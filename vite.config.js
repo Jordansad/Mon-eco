@@ -3,10 +3,13 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
-// Pour un déploiement sur GitHub Pages en sous-chemin (https://<user>.github.io/mon-projet/),
-// régler `base` sur '/mon-projet/' (voir README.md, section Déploiement).
+// Déployé sur GitHub Pages : https://jordansad.github.io/Mon-eco/
+// L'app n'est pas à la racine du domaine, d'où le sous-chemin ci-dessous
+// (voir README.md, section Déploiement, si tu changes de dépôt/domaine).
+const BASE_PATH = '/Mon-eco/';
+
 export default defineConfig({
-  base: '/',
+  base: BASE_PATH,
   plugins: [
     react(),
     tailwindcss(),
@@ -21,8 +24,8 @@ export default defineConfig({
         background_color: '#0f172a',
         display: 'standalone',
         orientation: 'portrait',
-        start_url: '/',
-        scope: '/',
+        start_url: BASE_PATH,
+        scope: BASE_PATH,
         lang: 'fr',
         icons: [
           {
