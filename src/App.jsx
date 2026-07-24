@@ -2,9 +2,11 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Wallet, Plus, Trash2, Settings as SettingsIcon, Target, PiggyBank,
   X, Check, ArrowUpRight, ArrowDownRight, Home, PieChart as PieIcon,
-  AlertTriangle, TrendingUp, TrendingDown, Pencil
+  AlertTriangle, TrendingUp, TrendingDown, Pencil, LogOut
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
+import AuthScreen from './AuthScreen.jsx';
+import { getSession, logout, dataKeyFor } from './auth.js';
 
 /* ------------------------------------------------------------------ *
  *  Données de référence
@@ -47,8 +49,6 @@ const DEFAULT_DATA = {
   settings: { currency: { symbol: 'FCFA', decimals: 0, position: 'after' } },
 };
 
-const STORAGE_KEY = 'mon-budget-v1';
-
 /* ------------------------------------------------------------------ *
  *  Helpers
  * ------------------------------------------------------------------ */
@@ -81,30 +81,51 @@ function makeFormatter(currency) {
 
 /* ------------------------------------------------------------------ *
  *  Persistance — localStorage (fonctionne hors ligne, entre sessions)
+ *  Une clé distincte par pseudo : chaque compte a ses propres données.
  * ------------------------------------------------------------------ */
-function loadData() {
+function loadData(storageKey) {
   if (typeof window === 'undefined') return null;
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = window.localStorage.getItem(storageKey);
     if (raw) return JSON.parse(raw);
   } catch (e) {
     console.error('Lecture des données impossible', e);
   }
   return null;
 }
-function saveData(data) {
+function saveData(storageKey, data) {
   if (typeof window === 'undefined') return;
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    window.localStorage.setItem(storageKey, JSON.stringify(data));
   } catch (e) {
     console.error('Sauvegarde impossible', e);
   }
 }
 
 /* ------------------------------------------------------------------ *
- *  Composant principal
+ *  Racine : gère l'authentification puis affiche l'app du compte connecté
  * ------------------------------------------------------------------ */
 export default function App() {
+  const [pseudo, setPseudo] = useState(() => getSession());
+
+  if (!pseudo) {
+    return <AuthScreen onAuthenticated={setPseudo} />;
+  }
+
+  return (
+    <Budget
+      key={pseudo}
+      pseudo={pseudo}
+      onLogout={() => { logout(); setPseudo(null); }}
+    />
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ *  Composant principal (budget d'un compte connecté)
+ * ------------------------------------------------------------------ */
+function Budget({ pseudo, onLogout }) {
+  const storageKey = dataKeyFor(pseudo);
   const [data, setData] = useState(DEFAULT_DATA);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('accueil');
@@ -112,7 +133,7 @@ export default function App() {
   const loadedRef = useRef(false);
 
   useEffect(() => {
-    const loaded = loadData();
+    const loaded = loadData(storageKey);
     if (loaded) {
       setData({
         ...DEFAULT_DATA,
@@ -126,8 +147,8 @@ export default function App() {
 
   useEffect(() => {
     if (!loadedRef.current) return;
-    saveData(data);
-  }, [data]);
+    saveData(storageKey, data);
+  }, [data, storageKey]);
 
   const currency = data.settings.currency;
   const money = useMemo(() => makeFormatter(currency), [currency]);
@@ -213,7 +234,7 @@ export default function App() {
             </span>
             <div className="leading-tight">
               <div className="font-semibold tracking-tight">Mon Budget</div>
-              <div className="text-[11px] text-slate-400">Patrimoine · {money(totals.patrimoine)}</div>
+              <div className="text-[11px] text-slate-400">{pseudo} · {money(totals.patrimoine)}</div>
             </div>
           </div>
           <button
@@ -276,6 +297,7 @@ export default function App() {
         <SettingsModal
           currency={currency} onCurrency={setCurrency}
           onReset={resetAll} onClose={() => setModal(null)}
+          pseudo={pseudo} onLogout={onLogout}
         />
       )}
       {modal?.type === 'initBalance' && (
@@ -718,13 +740,25 @@ function ModalShell({ title, onClose, children }) {
   );
 }
 
-function SettingsModal({ currency, onCurrency, onReset, onClose }) {
+function SettingsModal({ currency, onCurrency, onReset, onClose, pseudo, onLogout }) {
   const [confirming, setConfirming] = useState(false);
   const [customSym, setCustomSym] = useState(currency.symbol);
 
   return (
     <ModalShell title="Réglages" onClose={onClose}>
       <div className="space-y-5">
+        <div className="flex items-center justify-between rounded-xl bg-slate-50 ring-1 ring-slate-200 p-3">
+          <div>
+            <div className="text-[11px] text-slate-400">Connecté en tant que</div>
+            <div className="text-sm font-medium text-slate-800">{pseudo}</div>
+          </div>
+          <button
+            onClick={onLogout}
+            className="px-3 py-1.5 rounded-lg bg-white ring-1 ring-slate-200 text-xs font-medium text-slate-600 flex items-center gap-1.5 hover:bg-slate-100 transition-colors motion-reduce:transition-none">
+            <LogOut className="w-3.5 h-3.5" /> Déconnexion
+          </button>
+        </div>
+
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-2">Devise</label>
           <div className="grid grid-cols-3 gap-2">
@@ -770,7 +804,8 @@ function SettingsModal({ currency, onCurrency, onReset, onClose }) {
 
         <div className="pt-2 border-t border-slate-100">
           <p className="text-xs text-slate-400 mb-2">
-            Tes données sont enregistrées automatiquement dans ce navigateur.
+            Tes données sont enregistrées automatiquement sur cet appareil, sous ton pseudo.
+            « Tout réinitialiser » n'efface que les données de ton compte ({pseudo}).
           </p>
           {!confirming ? (
             <button

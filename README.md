@@ -7,7 +7,16 @@ Application de gestion budgétaire personnelle — solde, patrimoine, épargne, 
 - Vite + React + Tailwind CSS v4
 - `lucide-react` (icônes), `recharts` (camembert de répartition)
 - `vite-plugin-pwa` (Workbox) pour le service worker et le manifest
-- Persistance locale via `localStorage` (clé `mon-budget-v1`) — aucune donnée n'est envoyée à un serveur
+- Persistance locale via `localStorage` — aucune donnée n'est envoyée à un serveur
+
+## Comptes (pseudo + mot de passe)
+
+Chaque utilisateur crée son propre compte (pseudo + mot de passe) directement dans l'app, via l'écran d'accueil — **entièrement côté client, sans serveur** :
+
+- Les comptes sont stockés sur l'appareil (`localStorage`, clé `mon-budget-accounts-v1`), mot de passe jamais stocké en clair (haché en SHA-256 avec un sel aléatoire par compte).
+- Les données budgétaires de chaque compte sont isolées sous leur propre clé (`mon-budget-data-v1:<pseudo>`).
+- **Limites à connaître** : les comptes ne sont pas synchronisés entre appareils (créer "Jordansad" sur son téléphone ne le fait pas apparaître sur un ordinateur), et ce n'est pas un vrai coffre-fort de sécurité — quelqu'un avec accès au code source ou aux DevTools du navigateur peut techniquement contourner l'écran de connexion pour lire du localStorage. Pour un usage entre amis sur leurs propres appareils, ça reste largement suffisant.
+- Pas de mot de passe pré-enregistré dans le code (le dépôt est public) : chacun, y compris l'admin, crée son compte au premier lancement.
 
 ## Développement
 
@@ -52,10 +61,11 @@ Sur iOS (Safari) : ouvrir l'URL, bouton Partager → "Sur l'écran d'accueil". L
 
 ## Fonctionnalités
 
+- **Comptes** : création de compte / connexion par pseudo + mot de passe, données isolées par compte (voir section dédiée ci-dessus).
 - **Accueil** : solde disponible, patrimoine total (éditable — tu peux renseigner directement l'argent que tu as déjà), montant mis de côté, ajout rapide de transactions (dépense/revenu, catégorie, note, date), historique des dernières opérations.
 - **Analyse** : répartition des dépenses du mois (camembert + liste), budgets mensuels par catégorie avec barre de progression et alerte de dépassement.
 - **Épargne** : objectifs d'épargne (créer, alimenter, retirer, supprimer), suivi de progression.
-- **Réglages** : devise (FCFA / € / $ / symbole personnalisé), décimales, position du symbole, réinitialisation complète des données.
+- **Réglages** : compte connecté + déconnexion, devise (FCFA / € / $ / symbole personnalisé), décimales, position du symbole, réinitialisation des données du compte.
 
 ## Déploiement
 
