@@ -37,7 +37,7 @@ export default function AuthScreen({ onAuthenticated }) {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4 pt-[calc(1rem+env(safe-area-inset-top))] pb-[calc(1rem+env(safe-area-inset-bottom))]">
       <div className="w-full max-w-sm">
         <div className="flex flex-col items-center mb-6">
           <span className="grid place-items-center w-14 h-14 rounded-2xl bg-slate-900 ring-1 ring-slate-900/10 mb-3">

@@ -226,7 +226,7 @@ function Budget({ pseudo, onLogout }) {
       `}</style>
 
       {/* ---------- En-tête ---------- */}
-      <header className="sticky top-0 z-20 bg-slate-900 text-white">
+      <header className="sticky top-0 z-20 bg-slate-900 text-white pt-[env(safe-area-inset-top)]">
         <div className="max-w-xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="grid place-items-center w-8 h-8 rounded-xl bg-emerald-500/20 ring-1 ring-emerald-400/30">
@@ -267,7 +267,7 @@ function Budget({ pseudo, onLogout }) {
         </div>
       </header>
 
-      <main className="max-w-xl mx-auto px-4 pt-4 pb-24">
+      <main className="max-w-xl mx-auto px-4 pt-4 pb-[calc(6rem+env(safe-area-inset-bottom))]">
         {tab === 'accueil' && (
           <Accueil
             totals={totals} money={money}
@@ -727,7 +727,7 @@ function ModalShell({ title, onClose, children }) {
   return (
     <div className="fixed inset-0 z-30 flex items-end sm:items-center justify-center">
       <div className="absolute inset-0 bg-slate-900/40" onClick={onClose} />
-      <div className="relative w-full max-w-xl bg-white rounded-t-3xl sm:rounded-3xl p-5 shadow-xl max-h-[85vh] overflow-y-auto">
+      <div className="relative w-full max-w-xl bg-white rounded-t-3xl sm:rounded-3xl p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-xl max-h-[85vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-semibold text-slate-800">{title}</h3>
           <button onClick={onClose} className="p-2 rounded-lg hover:bg-slate-100 transition-colors motion-reduce:transition-none" aria-label="Fermer">
