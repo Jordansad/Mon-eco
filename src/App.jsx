@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Wallet, Plus, Trash2, Settings as SettingsIcon, Target, PiggyBank,
   X, Check, ArrowUpRight, ArrowDownRight, Home, PieChart as PieIcon,
-  AlertTriangle, TrendingUp, TrendingDown, Pencil, LogOut
+  AlertTriangle, TrendingUp, TrendingDown, Pencil, LogOut,
+  History as HistoryIcon, ChevronDown, ChevronRight
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import AuthScreen from './AuthScreen.jsx';
@@ -41,6 +42,9 @@ const CURRENCY_PRESETS = [
   { symbol: '$',    decimals: 2, position: 'before' },
 ];
 
+// Nombre maximum de mois d'historique conservés, pour ne pas saturer le stockage local.
+const HISTORY_MONTHS = 24;
+
 const DEFAULT_DATA = {
   initialBalance: 0,
   transactions: [],
@@ -61,6 +65,17 @@ const todayISO = () => {
 const monthKey = (d) => { const x = new Date(d); return `${x.getFullYear()}-${x.getMonth()}`; };
 const nowMonthKey = () => monthKey(new Date());
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+
+// Nombre de mois calendaires entre deux dates (b - a).
+const monthsBetween = (a, b) => {
+  const da = new Date(a), db = new Date(b);
+  return (db.getFullYear() - da.getFullYear()) * 12 + (db.getMonth() - da.getMonth());
+};
+// Ne garde que les opérations des HISTORY_MONTHS derniers mois (glissant).
+const pruneOldTransactions = (transactions) => {
+  const now = new Date();
+  return transactions.filter(t => monthsBetween(t.date, now) < HISTORY_MONTHS);
+};
 
 const fmtDate = (d) =>
   new Intl.DateTimeFormat('fr-FR', { day: '2-digit', month: 'short' }).format(new Date(d));
@@ -138,6 +153,7 @@ function Budget({ pseudo, onLogout }) {
       setData({
         ...DEFAULT_DATA,
         ...loaded,
+        transactions: pruneOldTransactions(loaded.transactions || []),
         settings: { ...DEFAULT_DATA.settings, ...(loaded.settings || {}) },
       });
     }
@@ -175,7 +191,10 @@ function Budget({ pseudo, onLogout }) {
 
   /* ---------- actions ---------- */
   const addTransaction = (t) =>
-    setData(d => ({ ...d, transactions: [{ id: uid(), ...t }, ...d.transactions] }));
+    setData(d => ({
+      ...d,
+      transactions: pruneOldTransactions([{ id: uid(), ...t }, ...d.transactions]),
+    }));
 
   const removeTransaction = (id) =>
     setData(d => ({ ...d, transactions: d.transactions.filter(x => x.id !== id) }));
@@ -216,6 +235,7 @@ function Budget({ pseudo, onLogout }) {
     { key: 'accueil', label: 'Accueil', icon: Home },
     { key: 'analyse', label: 'Analyse', icon: PieIcon },
     { key: 'epargne', label: 'Épargne', icon: PiggyBank },
+    { key: 'historique', label: 'Historique', icon: HistoryIcon },
   ];
 
   return (
@@ -247,7 +267,7 @@ function Budget({ pseudo, onLogout }) {
 
         {/* ---------- Onglets ---------- */}
         <div className="max-w-xl mx-auto px-4">
-          <div className="grid grid-cols-3 gap-1 pb-2">
+          <div className="grid grid-cols-4 gap-1 pb-2">
             {tabs.map(({ key, label, icon: Icon }) => {
               const active = tab === key;
               return (
@@ -255,11 +275,11 @@ function Budget({ pseudo, onLogout }) {
                   key={key}
                   onClick={() => setTab(key)}
                   className={
-                    'flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-medium transition-colors motion-reduce:transition-none ' +
+                    'flex items-center justify-center gap-1 py-2 rounded-lg text-[11px] xs:text-xs sm:text-sm font-medium transition-colors motion-reduce:transition-none ' +
                     (active ? 'bg-white text-slate-900' : 'text-slate-300 hover:bg-white/10')
                   }>
-                  <Icon className="w-4 h-4" />
-                  {label}
+                  <Icon className="w-4 h-4 shrink-0" />
+                  <span className="truncate">{label}</span>
                 </button>
               );
             })}
@@ -288,6 +308,11 @@ function Budget({ pseudo, onLogout }) {
             onOp={(goal, mode) => setModal({ type: 'goalOp', goal, mode, amount: '' })}
             onAdd={() => setModal({ type: 'addGoal' })}
             onRemove={removeGoal}
+          />
+        )}
+        {tab === 'historique' && (
+          <Historique
+            transactions={data.transactions} money={money} onRemove={removeTransaction}
           />
         )}
       </main>
@@ -711,6 +736,120 @@ function Epargne({ goals, money, solde, saved, onOp, onAdd, onRemove }) {
                     Retirer
                   </button>
                 </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ *  Onglet Historique
+ * ------------------------------------------------------------------ */
+const monthLabelFmt = new Intl.DateTimeFormat('fr-FR', { month: 'long', year: 'numeric' });
+
+function Historique({ transactions, money, onRemove }) {
+  const [openMonth, setOpenMonth] = useState(null);
+
+  const months = useMemo(() => {
+    const map = new Map();
+    for (const t of transactions) {
+      const mk = monthKey(t.date);
+      if (!map.has(mk)) {
+        const [y, m] = mk.split('-').map(Number);
+        map.set(mk, { key: mk, y, m, income: 0, expense: 0, items: [] });
+      }
+      const g = map.get(mk);
+      const amt = Number(t.amount) || 0;
+      if (t.type === 'income') g.income += amt; else g.expense += amt;
+      g.items.push(t);
+    }
+    return [...map.values()]
+      .sort((a, b) => (b.y - a.y) || (b.m - a.m))
+      .map(g => ({ ...g, items: g.items.slice().sort((a, b) => new Date(b.date) - new Date(a.date)) }));
+  }, [transactions]);
+
+  const oldest = months[months.length - 1];
+
+  return (
+    <div className="space-y-4">
+      <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+        <div className="flex items-center gap-2">
+          <HistoryIcon className="w-4 h-4 text-slate-400" />
+          <h2 className="font-semibold text-slate-800">Historique des opérations</h2>
+        </div>
+        <p className="text-xs text-slate-400 mt-1">
+          Consulte tes dépenses et revenus passés, jusqu'à {HISTORY_MONTHS} mois en arrière
+          (au-delà, les opérations sont automatiquement archivées pour ne pas saturer la mémoire de l'appareil).
+          {oldest ? ` Mois le plus ancien disponible : ${monthLabelFmt.format(new Date(oldest.y, oldest.m, 1))}.` : ''}
+        </p>
+      </section>
+
+      {months.length === 0 ? (
+        <div className="rounded-2xl bg-white p-6 text-center shadow-sm ring-1 ring-slate-200">
+          <HistoryIcon className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+          <p className="text-sm text-slate-500">Aucune opération enregistrée pour l'instant.</p>
+        </div>
+      ) : (
+        <ul className="space-y-2">
+          {months.map(g => {
+            const label = monthLabelFmt.format(new Date(g.y, g.m, 1));
+            const net = g.income - g.expense;
+            const open = openMonth === g.key;
+            return (
+              <li key={g.key} className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
+                <button
+                  onClick={() => setOpenMonth(open ? null : g.key)}
+                  className="w-full flex items-center gap-3 p-4 hover:bg-slate-50 transition-colors motion-reduce:transition-none">
+                  <span className="grid place-items-center w-9 h-9 rounded-full bg-slate-100 shrink-0">
+                    {open ? <ChevronDown className="w-4 h-4 text-slate-500" /> : <ChevronRight className="w-4 h-4 text-slate-500" />}
+                  </span>
+                  <div className="flex-1 min-w-0 text-left">
+                    <div className="text-sm font-medium text-slate-800 capitalize">{label}</div>
+                    <div className="text-xs text-slate-400">{g.items.length} opération{g.items.length > 1 ? 's' : ''}</div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className={'font-mono tabular-nums text-sm font-semibold ' + (net >= 0 ? 'text-emerald-600' : 'text-rose-600')}>
+                      {net >= 0 ? '+' : '−'}{money(Math.abs(net))}
+                    </div>
+                    <div className="text-[11px] text-slate-400">
+                      +{money(g.income)} · −{money(g.expense)}
+                    </div>
+                  </div>
+                </button>
+
+                {open && (
+                  <ul className="divide-y divide-slate-100 border-t border-slate-100 px-4">
+                    {g.items.map(t => {
+                      const c = catOf(t.cat);
+                      const inc = t.type === 'income';
+                      return (
+                        <li key={t.id} className="flex items-center gap-3 py-2.5">
+                          <span className="grid place-items-center w-9 h-9 rounded-full bg-slate-100 text-base shrink-0">
+                            {c.emoji}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <div className="text-sm font-medium text-slate-800 truncate">
+                              {c.label}{t.note ? <span className="text-slate-400 font-normal"> · {t.note}</span> : null}
+                            </div>
+                            <div className="text-xs text-slate-400">{fmtDate(t.date)}</div>
+                          </div>
+                          <div className={'font-mono tabular-nums text-sm font-semibold shrink-0 ' + (inc ? 'text-emerald-600' : 'text-rose-600')}>
+                            {inc ? '+' : '−'}{money(t.amount)}
+                          </div>
+                          <button
+                            onClick={() => onRemove(t.id)}
+                            className="p-1.5 rounded-lg text-slate-300 hover:text-rose-500 hover:bg-rose-50 transition-colors motion-reduce:transition-none shrink-0"
+                            aria-label="Supprimer">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
               </li>
             );
           })}
