@@ -32,7 +32,13 @@ const INCOME_CATS = [
   { key: 'autre_rev', label: 'Autre',     emoji: '➕' },
 ];
 const ALL_CATS = [...EXPENSE_CATS, ...INCOME_CATS];
-const catOf = (key) => ALL_CATS.find(c => c.key === key) || { label: 'Autre', emoji: '📦', color: '#64748b' };
+const OTHER_KEYS = ['autre_dep', 'autre_rev'];
+// customLabel ne s'applique qu'aux catégories "Autre" : nom personnalisé saisi par l'utilisateur.
+const catOf = (key, customLabel) => {
+  const c = ALL_CATS.find(c => c.key === key) || { label: 'Autre', emoji: '📦', color: '#64748b' };
+  if (customLabel && OTHER_KEYS.includes(key)) return { ...c, label: customLabel };
+  return c;
+};
 
 const GOAL_EMOJIS = ['🎯', '🏦', '✈️', '💻', '🏠', '🚗', '🎓', '📱', '🎁', '🛡️'];
 
@@ -381,22 +387,25 @@ function Accueil({ totals, money, transactions, onAdd, onRemove, onEdit, onEditB
   const [type, setType] = useState('expense');
   const [amount, setAmount] = useState('');
   const [cat, setCat] = useState('alimentation');
+  const [customCat, setCustomCat] = useState('');
   const [note, setNote] = useState('');
   const [date, setDate] = useState(todayISO());
 
   const cats = type === 'expense' ? EXPENSE_CATS : INCOME_CATS;
   const negative = totals.solde < 0;
+  const isOther = OTHER_KEYS.includes(cat);
 
   const submit = () => {
     const amt = Math.abs(parseFloat(amount));
     if (!amt || isNaN(amt)) return;
-    onAdd({ type, amount: amt, cat, note: note.trim(), date });
-    setAmount(''); setNote('');
+    onAdd({ type, amount: amt, cat, customCat: isOther ? customCat.trim() : '', note: note.trim(), date });
+    setAmount(''); setNote(''); setCustomCat('');
   };
 
   const switchType = (t) => {
     setType(t);
     setCat(t === 'expense' ? 'alimentation' : 'salaire');
+    setCustomCat('');
   };
 
   const recent = transactions.slice(0, 8);
@@ -474,7 +483,7 @@ function Accueil({ totals, money, transactions, onAdd, onRemove, onEdit, onEditB
             return (
               <button
                 key={c.key}
-                onClick={() => setCat(c.key)}
+                onClick={() => { setCat(c.key); if (!OTHER_KEYS.includes(c.key)) setCustomCat(''); }}
                 className={'shrink-0 px-3 py-1.5 rounded-full text-sm whitespace-nowrap transition-colors motion-reduce:transition-none ring-1 ' +
                   (active ? 'bg-slate-900 text-white ring-slate-900' : 'bg-white text-slate-600 ring-slate-200')}>
                 <span className="mr-1">{c.emoji}</span>{c.label}
@@ -482,6 +491,13 @@ function Accueil({ totals, money, transactions, onAdd, onRemove, onEdit, onEditB
             );
           })}
         </div>
+        {isOther && (
+          <input
+            type="text" placeholder="Nom de la catégorie (ex : Assurance)"
+            value={customCat} onChange={e => setCustomCat(e.target.value)}
+            className="w-full mt-2 text-sm px-3 py-2 rounded-xl bg-slate-50 ring-1 ring-slate-200 focus:ring-2 focus:ring-slate-900 outline-none"
+          />
+        )}
 
         <div className="grid grid-cols-2 gap-2 mt-3">
           <div>
@@ -529,7 +545,7 @@ function Accueil({ totals, money, transactions, onAdd, onRemove, onEdit, onEditB
         ) : (
           <ul className="divide-y divide-slate-100">
             {recent.map(t => {
-              const c = catOf(t.cat);
+              const c = catOf(t.cat, t.customCat);
               const inc = t.type === 'income';
               return (
                 <li key={t.id} className="flex items-center gap-3 py-2.5">
@@ -950,7 +966,7 @@ function Historique({ transactions, money, onRemove, onEdit }) {
                 {open && (
                   <ul className="divide-y divide-slate-100 border-t border-slate-100 px-4">
                     {g.items.map(t => {
-                      const c = catOf(t.cat);
+                      const c = catOf(t.cat, t.customCat);
                       const inc = t.type === 'income';
                       return (
                         <li key={t.id} className="flex items-center gap-3 py-2.5">
@@ -1201,9 +1217,11 @@ function AddGoalModal({ onClose, onCreate }) {
 function EditTransactionModal({ tx, money, onClose, onSave }) {
   const cats = tx.type === 'expense' ? EXPENSE_CATS : INCOME_CATS;
   const [cat, setCat] = useState(tx.cat);
+  const [customCat, setCustomCat] = useState(tx.customCat || '');
   const [note, setNote] = useState(tx.note || '');
+  const isOther = OTHER_KEYS.includes(cat);
 
-  const save = () => onSave({ cat, note: note.trim() });
+  const save = () => onSave({ cat, customCat: isOther ? customCat.trim() : '', note: note.trim() });
 
   return (
     <ModalShell title={`Modifier · ${money(tx.amount)}`} onClose={onClose}>
@@ -1216,7 +1234,7 @@ function EditTransactionModal({ tx, money, onClose, onSave }) {
               return (
                 <button
                   key={c.key}
-                  onClick={() => setCat(c.key)}
+                  onClick={() => { setCat(c.key); if (!OTHER_KEYS.includes(c.key)) setCustomCat(''); }}
                   className={'shrink-0 px-3 py-1.5 rounded-full text-sm whitespace-nowrap transition-colors motion-reduce:transition-none ring-1 ' +
                     (active ? 'bg-slate-900 text-white ring-slate-900' : 'bg-white text-slate-600 ring-slate-200')}>
                   <span className="mr-1">{c.emoji}</span>{c.label}
@@ -1224,6 +1242,13 @@ function EditTransactionModal({ tx, money, onClose, onSave }) {
               );
             })}
           </div>
+          {isOther && (
+            <input
+              type="text" placeholder="Nom de la catégorie (ex : Assurance)"
+              value={customCat} onChange={e => setCustomCat(e.target.value)}
+              className="w-full mt-2 text-sm px-3 py-2 rounded-xl bg-slate-50 ring-1 ring-slate-200 focus:ring-2 focus:ring-slate-900 outline-none"
+            />
+          )}
         </div>
         <div>
           <label className="block text-xs text-slate-500 mb-1">Note</label>
