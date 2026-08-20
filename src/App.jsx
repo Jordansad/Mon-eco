@@ -3,7 +3,7 @@ import {
   Wallet, Plus, Trash2, Settings as SettingsIcon, Target, PiggyBank,
   X, Check, ArrowUpRight, ArrowDownRight, Home, PieChart as PieIcon,
   AlertTriangle, TrendingUp, TrendingDown, Pencil, LogOut,
-  History as HistoryIcon, ChevronDown, ChevronRight
+  History as HistoryIcon, ChevronDown, ChevronRight, Calculator
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import AuthScreen from './AuthScreen.jsx';
@@ -169,6 +169,12 @@ function Budget({ pseudo, onLogout }) {
   const currency = data.settings.currency;
   const money = useMemo(() => makeFormatter(currency), [currency]);
 
+  // Tri unique (plus récent en premier) réutilisé par l'accueil et l'historique.
+  const sortedTransactions = useMemo(
+    () => [...data.transactions].sort((a, b) => new Date(b.date) - new Date(a.date)),
+    [data.transactions]
+  );
+
   /* ---------- calculs automatiques ---------- */
   const totals = useMemo(() => {
     let income = 0, expense = 0, mIncome = 0, mExpense = 0;
@@ -199,11 +205,17 @@ function Budget({ pseudo, onLogout }) {
   const removeTransaction = (id) =>
     setData(d => ({ ...d, transactions: d.transactions.filter(x => x.id !== id) }));
 
+  const updateTransaction = (id, updates) =>
+    setData(d => ({
+      ...d,
+      transactions: d.transactions.map(t => t.id === id ? { ...t, ...updates } : t),
+    }));
+
   const setBudget = (cat, amount) =>
     setData(d => ({ ...d, budgets: { ...d.budgets, [cat]: amount } }));
 
   const addGoal = (g) =>
-    setData(d => ({ ...d, goals: [...d.goals, { id: uid(), current: 0, ...g }] }));
+    setData(d => ({ ...d, goals: [...d.goals, { id: uid(), current: 0, history: [], ...g }] }));
 
   const removeGoal = (id) =>
     setData(d => ({ ...d, goals: d.goals.filter(x => x.id !== id) }));
@@ -211,8 +223,12 @@ function Budget({ pseudo, onLogout }) {
   const adjustGoal = (id, delta) =>
     setData(d => ({
       ...d,
-      goals: d.goals.map(g =>
-        g.id === id ? { ...g, current: Math.max(0, (Number(g.current) || 0) + delta) } : g),
+      goals: d.goals.map(g => {
+        if (g.id !== id) return g;
+        const current = Math.max(0, (Number(g.current) || 0) + delta);
+        const op = { id: uid(), type: delta >= 0 ? 'add' : 'withdraw', amount: Math.abs(delta), date: todayISO() };
+        return { ...g, current, history: [op, ...(g.history || [])] };
+      }),
     }));
 
   const setCurrency = (c) =>
@@ -291,8 +307,9 @@ function Budget({ pseudo, onLogout }) {
         {tab === 'accueil' && (
           <Accueil
             totals={totals} money={money}
-            transactions={data.transactions}
+            transactions={sortedTransactions}
             onAdd={addTransaction} onRemove={removeTransaction}
+            onEdit={(t) => setModal({ type: 'editTx', tx: t })}
             onEditBalance={() => setModal({ type: 'initBalance' })}
           />
         )}
@@ -312,7 +329,8 @@ function Budget({ pseudo, onLogout }) {
         )}
         {tab === 'historique' && (
           <Historique
-            transactions={data.transactions} money={money} onRemove={removeTransaction}
+            transactions={sortedTransactions} money={money} onRemove={removeTransaction}
+            onEdit={(t) => setModal({ type: 'editTx', tx: t })}
           />
         )}
       </main>
@@ -345,6 +363,13 @@ function Budget({ pseudo, onLogout }) {
           }}
         />
       )}
+      {modal?.type === 'editTx' && (
+        <EditTransactionModal
+          tx={modal.tx} money={money}
+          onClose={() => setModal(null)}
+          onSave={(updates) => { updateTransaction(modal.tx.id, updates); setModal(null); }}
+        />
+      )}
     </div>
   );
 }
@@ -352,7 +377,7 @@ function Budget({ pseudo, onLogout }) {
 /* ------------------------------------------------------------------ *
  *  Onglet Accueil
  * ------------------------------------------------------------------ */
-function Accueil({ totals, money, transactions, onAdd, onRemove, onEditBalance }) {
+function Accueil({ totals, money, transactions, onAdd, onRemove, onEdit, onEditBalance }) {
   const [type, setType] = useState('expense');
   const [amount, setAmount] = useState('');
   const [cat, setCat] = useState('alimentation');
@@ -521,6 +546,12 @@ function Accueil({ totals, money, transactions, onAdd, onRemove, onEditBalance }
                     {inc ? '+' : '−'}{money(t.amount).replace('-', '')}
                   </div>
                   <button
+                    onClick={() => onEdit(t)}
+                    className="p-1.5 rounded-lg text-slate-300 hover:text-slate-600 hover:bg-slate-100 transition-colors motion-reduce:transition-none"
+                    aria-label="Modifier">
+                    <Pencil className="w-4 h-4" />
+                  </button>
+                  <button
                     onClick={() => onRemove(t.id)}
                     className="p-1.5 rounded-lg text-slate-300 hover:text-rose-500 hover:bg-rose-50 transition-colors motion-reduce:transition-none"
                     aria-label="Supprimer">
@@ -659,6 +690,8 @@ function Analyse({ totals, money, budgets, onSetBudget }) {
  *  Onglet Épargne
  * ------------------------------------------------------------------ */
 function Epargne({ goals, money, solde, saved, onOp, onAdd, onRemove }) {
+  const [openGoal, setOpenGoal] = useState(null);
+
   return (
     <div className="space-y-4">
       <section className="rounded-3xl p-5 bg-gradient-to-br from-violet-600 to-indigo-700 text-white shadow-lg">
@@ -691,6 +724,8 @@ function Epargne({ goals, money, solde, saved, onOp, onAdd, onRemove }) {
             const tgt = Number(g.target) || 0;
             const pct = tgt > 0 ? Math.min(100, Math.round((cur / tgt) * 100)) : 0;
             const done = tgt > 0 && cur >= tgt;
+            const history = (g.history || []).slice().sort((a, b) => new Date(b.date) - new Date(a.date));
+            const goalOpen = openGoal === g.id;
             return (
               <li key={g.id} className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
                 <div className="flex items-center gap-3">
@@ -736,12 +771,104 @@ function Epargne({ goals, money, solde, saved, onOp, onAdd, onRemove }) {
                     Retirer
                   </button>
                 </div>
+
+                <button
+                  onClick={() => setOpenGoal(goalOpen ? null : g.id)}
+                  className="mt-3 w-full flex items-center justify-between text-xs text-slate-500 hover:text-slate-700 transition-colors motion-reduce:transition-none">
+                  <span>{history.length} opération{history.length > 1 ? 's' : ''}</span>
+                  {goalOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                </button>
+                {goalOpen && (
+                  history.length === 0 ? (
+                    <p className="mt-2 text-xs text-slate-400">Aucune opération pour l'instant.</p>
+                  ) : (
+                    <ul className="mt-1 divide-y divide-slate-100 border-t border-slate-100">
+                      {history.map(op => (
+                        <li key={op.id} className="flex items-center justify-between py-2 text-sm">
+                          <span className="text-slate-500">
+                            {op.type === 'add' ? 'Mise de côté' : 'Retrait'} · {fmtDate(op.date)}
+                          </span>
+                          <span className={'font-mono tabular-nums font-medium ' +
+                            (op.type === 'add' ? 'text-emerald-600' : 'text-rose-600')}>
+                            {op.type === 'add' ? '+' : '−'}{money(op.amount)}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )
+                )}
               </li>
             );
           })}
         </ul>
       )}
+
+      <SavingsSimulator money={money} />
     </div>
+  );
+}
+
+function SavingsSimulator({ money }) {
+  const [target, setTarget] = useState('');
+  const [current, setCurrent] = useState('');
+  const [months, setMonths] = useState('');
+
+  const tgt = parseFloat(target) || 0;
+  const cur = parseFloat(current) || 0;
+  const dur = parseInt(months, 10) || 0;
+  const remaining = Math.max(0, tgt - cur);
+  const monthly = remaining / dur;
+  const canCompute = tgt > 0 && dur > 0;
+
+  return (
+    <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+      <div className="flex items-center gap-2">
+        <Calculator className="w-4 h-4 text-slate-400" />
+        <h2 className="font-semibold text-slate-800">Simulateur d'épargne</h2>
+      </div>
+      <p className="text-xs text-slate-400 mt-1 mb-3">
+        Indique ton objectif et le temps dont tu disposes : on calcule combien mettre de côté chaque mois.
+      </p>
+
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="block text-xs text-slate-500 mb-1">Montant à atteindre</label>
+          <input
+            type="number" inputMode="decimal" placeholder="0" value={target}
+            onChange={e => setTarget(e.target.value)}
+            className="w-full text-sm px-3 py-2 rounded-xl bg-slate-50 ring-1 ring-slate-200 focus:ring-2 focus:ring-slate-900 outline-none"
+          />
+        </div>
+        <div>
+          <label className="block text-xs text-slate-500 mb-1">Durée (mois)</label>
+          <input
+            type="number" inputMode="numeric" min="1" placeholder="ex : 6" value={months}
+            onChange={e => setMonths(e.target.value)}
+            className="w-full text-sm px-3 py-2 rounded-xl bg-slate-50 ring-1 ring-slate-200 focus:ring-2 focus:ring-slate-900 outline-none"
+          />
+        </div>
+      </div>
+      <div className="mt-2">
+        <label className="block text-xs text-slate-500 mb-1">Déjà épargné (facultatif)</label>
+        <input
+          type="number" inputMode="decimal" placeholder="0" value={current}
+          onChange={e => setCurrent(e.target.value)}
+          className="w-full text-sm px-3 py-2 rounded-xl bg-slate-50 ring-1 ring-slate-200 focus:ring-2 focus:ring-slate-900 outline-none"
+        />
+      </div>
+
+      {canCompute && (
+        <div className="mt-4 rounded-xl bg-violet-50 ring-1 ring-violet-100 p-3">
+          <div className="text-[11px] text-violet-500">À mettre de côté chaque mois</div>
+          <div className="font-mono tabular-nums text-xl font-semibold text-violet-700 mt-0.5">
+            {money(monthly)}
+          </div>
+          <div className="text-[11px] text-violet-500 mt-1">
+            pendant {dur} mois pour atteindre {money(tgt)}{cur > 0 ? ` (${money(remaining)} restants)` : ''}
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -750,7 +877,7 @@ function Epargne({ goals, money, solde, saved, onOp, onAdd, onRemove }) {
  * ------------------------------------------------------------------ */
 const monthLabelFmt = new Intl.DateTimeFormat('fr-FR', { month: 'long', year: 'numeric' });
 
-function Historique({ transactions, money, onRemove }) {
+function Historique({ transactions, money, onRemove, onEdit }) {
   const [openMonth, setOpenMonth] = useState(null);
 
   const months = useMemo(() => {
@@ -839,6 +966,12 @@ function Historique({ transactions, money, onRemove }) {
                           <div className={'font-mono tabular-nums text-sm font-semibold shrink-0 ' + (inc ? 'text-emerald-600' : 'text-rose-600')}>
                             {inc ? '+' : '−'}{money(t.amount)}
                           </div>
+                          <button
+                            onClick={() => onEdit(t)}
+                            className="p-1.5 rounded-lg text-slate-300 hover:text-slate-600 hover:bg-slate-100 transition-colors motion-reduce:transition-none shrink-0"
+                            aria-label="Modifier">
+                            <Pencil className="w-4 h-4" />
+                          </button>
                           <button
                             onClick={() => onRemove(t.id)}
                             className="p-1.5 rounded-lg text-slate-300 hover:text-rose-500 hover:bg-rose-50 transition-colors motion-reduce:transition-none shrink-0"
@@ -1059,6 +1192,52 @@ function AddGoalModal({ onClose, onCreate }) {
           onClick={create}
           className="w-full py-2.5 rounded-xl bg-violet-600 text-white font-medium flex items-center justify-center gap-1.5 hover:bg-violet-700 transition-colors motion-reduce:transition-none">
           <Check className="w-4 h-4" /> Créer l'objectif
+        </button>
+      </div>
+    </ModalShell>
+  );
+}
+
+function EditTransactionModal({ tx, money, onClose, onSave }) {
+  const cats = tx.type === 'expense' ? EXPENSE_CATS : INCOME_CATS;
+  const [cat, setCat] = useState(tx.cat);
+  const [note, setNote] = useState(tx.note || '');
+
+  const save = () => onSave({ cat, note: note.trim() });
+
+  return (
+    <ModalShell title={`Modifier · ${money(tx.amount)}`} onClose={onClose}>
+      <div className="space-y-4">
+        <div>
+          <label className="block text-xs text-slate-500 mb-1.5">Catégorie</label>
+          <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+            {cats.map(c => {
+              const active = cat === c.key;
+              return (
+                <button
+                  key={c.key}
+                  onClick={() => setCat(c.key)}
+                  className={'shrink-0 px-3 py-1.5 rounded-full text-sm whitespace-nowrap transition-colors motion-reduce:transition-none ring-1 ' +
+                    (active ? 'bg-slate-900 text-white ring-slate-900' : 'bg-white text-slate-600 ring-slate-200')}>
+                  <span className="mr-1">{c.emoji}</span>{c.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <div>
+          <label className="block text-xs text-slate-500 mb-1">Note</label>
+          <input
+            type="text" placeholder="ex : courses" value={note}
+            onChange={e => setNote(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') save(); }}
+            className="w-full text-sm px-3 py-2 rounded-xl bg-slate-50 ring-1 ring-slate-200 focus:ring-2 focus:ring-slate-900 outline-none"
+          />
+        </div>
+        <button
+          onClick={save}
+          className="w-full py-2.5 rounded-xl bg-slate-900 text-white font-medium flex items-center justify-center gap-1.5 hover:bg-slate-800 transition-colors motion-reduce:transition-none">
+          <Check className="w-4 h-4" /> Enregistrer
         </button>
       </div>
     </ModalShell>
