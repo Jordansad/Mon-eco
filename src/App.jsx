@@ -226,13 +226,16 @@ function Budget({ pseudo, onLogout }) {
   const removeGoal = (id) =>
     setData(d => ({ ...d, goals: d.goals.filter(x => x.id !== id) }));
 
-  const adjustGoal = (id, delta) =>
+  const adjustGoal = (id, delta, note) =>
     setData(d => ({
       ...d,
       goals: d.goals.map(g => {
         if (g.id !== id) return g;
         const current = Math.max(0, (Number(g.current) || 0) + delta);
-        const op = { id: uid(), type: delta >= 0 ? 'add' : 'withdraw', amount: Math.abs(delta), date: todayISO() };
+        const op = {
+          id: uid(), type: delta >= 0 ? 'add' : 'withdraw', amount: Math.abs(delta),
+          date: todayISO(), note: (note || '').trim(),
+        };
         return { ...g, current, history: [op, ...(g.history || [])] };
       }),
     }));
@@ -363,8 +366,8 @@ function Budget({ pseudo, onLogout }) {
         <GoalOpModal
           goal={modal.goal} mode={modal.mode} money={money} solde={totals.solde}
           onClose={() => setModal(null)}
-          onConfirm={(amt) => {
-            adjustGoal(modal.goal.id, modal.mode === 'add' ? amt : -amt);
+          onConfirm={(amt, note) => {
+            adjustGoal(modal.goal.id, modal.mode === 'add' ? amt : -amt, note);
             setModal(null);
           }}
         />
@@ -800,11 +803,16 @@ function Epargne({ goals, money, solde, saved, onOp, onAdd, onRemove }) {
                   ) : (
                     <ul className="mt-1 divide-y divide-slate-100 border-t border-slate-100">
                       {history.map(op => (
-                        <li key={op.id} className="flex items-center justify-between py-2 text-sm">
-                          <span className="text-slate-500">
-                            {op.type === 'add' ? 'Mise de côté' : 'Retrait'} · {fmtDate(op.date)}
-                          </span>
-                          <span className={'font-mono tabular-nums font-medium ' +
+                        <li key={op.id} className="flex items-center justify-between gap-2 py-2 text-sm">
+                          <div className="min-w-0">
+                            <div className="text-slate-500">
+                              {op.type === 'add' ? 'Mise de côté' : 'Retrait'} · {fmtDate(op.date)}
+                            </div>
+                            {op.note && (
+                              <div className="text-xs text-slate-400 truncate">{op.note}</div>
+                            )}
+                          </div>
+                          <span className={'font-mono tabular-nums font-medium shrink-0 ' +
                             (op.type === 'add' ? 'text-emerald-600' : 'text-rose-600')}>
                             {op.type === 'add' ? '+' : '−'}{money(op.amount)}
                           </span>
@@ -1271,6 +1279,7 @@ function EditTransactionModal({ tx, money, onClose, onSave }) {
 
 function GoalOpModal({ goal, mode, money, solde, onClose, onConfirm }) {
   const [amount, setAmount] = useState('');
+  const [note, setNote] = useState('');
   const isAdd = mode === 'add';
   const cur = Number(goal.current) || 0;
   const max = isAdd ? solde : cur;
@@ -1280,7 +1289,7 @@ function GoalOpModal({ goal, mode, money, solde, onClose, onConfirm }) {
 
   const confirm = () => {
     if (!amt || isNaN(amt) || tooMuch) return;
-    onConfirm(amt);
+    onConfirm(amt, note);
   };
 
   return (
@@ -1294,9 +1303,20 @@ function GoalOpModal({ goal, mode, money, solde, onClose, onConfirm }) {
         <input
           type="number" inputMode="decimal" placeholder="0" value={amount} autoFocus
           onChange={e => setAmount(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') confirm(); }}
+          onKeyDown={e => { if (e.key === 'Enter' && isAdd) confirm(); }}
           className="w-full text-2xl font-mono tabular-nums font-semibold px-3 py-2 rounded-xl bg-slate-50 ring-1 ring-slate-200 focus:ring-2 focus:ring-slate-900 outline-none"
         />
+        {!isAdd && (
+          <div>
+            <label className="block text-xs text-slate-500 mb-1">Motif du retrait (facultatif)</label>
+            <input
+              type="text" placeholder="ex : urgence médicale"
+              value={note} onChange={e => setNote(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') confirm(); }}
+              className="w-full text-sm px-3 py-2 rounded-xl bg-slate-50 ring-1 ring-slate-200 focus:ring-2 focus:ring-slate-900 outline-none"
+            />
+          </div>
+        )}
         {tooMuch && (
           <p className="text-xs text-rose-500 flex items-center gap-1">
             <AlertTriangle className="w-3 h-3" />
